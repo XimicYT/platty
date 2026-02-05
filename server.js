@@ -4,97 +4,111 @@ const port = process.env.PORT || 3000;
 const wss = new WebSocket.Server({ port });
 
 let players = {};
-const MAX_HISTORY = 50;
-let chatHistory = [];
+let history = [];
+const HISTORY_Limit = 30;
 
-// validation constants
-const MAX_SPEED_TOLERANCE = 40; // Generous to account for lag/dashing
+// Config
+const TICK_RATE = 20; // Broadcasts per second (50ms)
+
+wss.on('connection', (ws) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    // Assign a random neon color from a curated palette
+    const palette = ['#00f3ff', '#ff00ff', '#fff200', '#00ff9d', '#ff3333'];
+    const color = palette[Math.floor(Math.random() * palette.length)];
+
+    console.log(`[+] Player ${id} connected`);
+
+    // Initial Handshake
+    ws.send(JSON.stringify({ 
+        type: 'init', 
+        id, 
+        color, 
+        history 
+    }));
+
+    ws.on('message', (msgRaw) => {
+        try {
+            const data = JSON.parse(msgRaw);
+
+            if (data.type === 'join') {
+                players[id] = {
+                    id,
+                    username: (data.username || "Guest").substring(0, 12),
+                    color,
+                    x: 0, y: 0, vx: 0, vy: 0,
+                    state: 'idle',
+                    lastSeen: Date.now()
+                };
+            }
+            else if (data.type === 'update' && players[id]) {
+                const p = players[id];
+                p.x = data.x;
+                p.y = data.y;
+                p.vx = data.vx;
+                p.vy = data.vy;
+                p.state = data.state; // 'run', 'jump', 'wall'
+                p.facing = data.facing;
+                p.lastSeen = Date.now();
+            }
+            else if (data.type === 'chat') {
+                const chatMsg = {
+                    user: players[id] ? players[id].username : "Anon",
+                    text: data.text.substring(0, 128),
+                    color: players[id] ? players[id].color : "#fff",
+                    time: Date.now()
+                };
+                history.push(chatMsg);
+                if (history.length > HISTORY_Limit) history.shift();
+                broadcast({ type: 'chat', msg: chatMsg });
+            }
+        } catch (e) {
+            console.error("Packet Error", e);
+        }
+    });
+
+    ws.on('close', () => {
+        delete players[id];
+        broadcast({ type: 'leave', id });
+    });
+});
 
 function broadcast(data) {
     const pack = JSON.stringify(data);
-    wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) client.send(pack);
+    wss.clients.forEach(c => {
+        if (c.readyState === WebSocket.OPEN) c.send(pack);
     });
 }
 
-wss.on('connection', (ws) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    // Neon palette
-    const colors = ['#00ff00', '#00eaff', '#ff00ff', '#ffff00', '#ff5500'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-    
-    let lastPacketTime = Date.now();
-
-    console.log(`[Connect] Player ${id}`);
-
-    ws.on('message', (message) => {
-        try {
-            const data = JSON.parse(message);
-            const now = Date.now();
-
-            if (data.type === 'join') {
-                players[id] = { 
-                    x: 100, y: 700, vx: 0, vy: 0, 
-                    color, level: 1, 
-                    username: (data.username || "Anon").substring(0, 12).replace(/[^a-zA-Z0-9]/g, ''),
-                    lastUpdate: now
-                };
-                ws.send(JSON.stringify({ type: 'init', id, color, history: chatHistory }));
-            }
-            
-            else if (data.type === 'move' && players[id]) {
-                const p = players[id];
-                
-                // Basic Speed Sanity Check (Anti-Cheat)
-                const dist = Math.abs(data.x - p.x) + Math.abs(data.y - p.y);
-                const dt = now - p.lastUpdate;
-                
-                // Only update if movement is within realm of physics (or it's a respawn/level change)
-                if (dist < MAX_SPEED_TOLERANCE * (dt/16) || dist > 500) { 
-                    p.x = data.x;
-                    p.y = data.y;
-                    p.vx = data.vx;
-                    p.vy = data.vy;
-                    p.level = data.level;
-                    p.facing = data.facing; // -1 or 1
-                }
-                p.lastUpdate = now;
-            }
-
-            else if (data.type === 'chat' && players[id]) {
-                const msg = { 
-                    id: Date.now(), 
-                    user: players[id].username, 
-                    text: data.text.substring(0, 140), 
-                    color: players[id].color 
-                };
-                chatHistory.push(msg);
-                if(chatHistory.length > MAX_HISTORY) chatHistory.shift();
-                broadcast({ type: 'chat', msg });
-            }
-        } catch (e) { console.error("Err:", e.message); }
-    });
-
-    ws.on('close', () => { delete players[id]; });
-});
-
-// Broadcast Loop (20 FPS is enough for interpolation)
+// Optimized Game Loop
 setInterval(() => {
-    const pack = [];
+    const snapshot = [];
+    const now = Date.now();
+    
     for (let id in players) {
-        pack.push({
-            id: id,
-            x: Math.round(players[id].x),
-            y: Math.round(players[id].y),
-            vx: Number(players[id].vx.toFixed(2)),
-            vy: Number(players[id].vy.toFixed(2)),
-            l: players[id].level,
-            f: players[id].facing,
-            c: players[id].color,
-            u: players[id].username
+        // Prune stale connections (10 seconds timeout)
+        if (now - players[id].lastSeen > 10000) {
+            delete players[id];
+            continue;
+        }
+        
+        const p = players[id];
+        // Compress data: Round to 1 decimal for bandwidth
+        snapshot.push({
+            id: p.id,
+            x: Math.round(p.x * 10) / 10,
+            y: Math.round(p.y * 10) / 10,
+            vx: Math.round(p.vx),
+            vy: Math.round(p.vy),
+            u: p.username,
+            c: p.color,
+            s: p.state,
+            f: p.facing
         });
     }
-    broadcast({ type: 'state', players: pack });
-}, 50);
 
-console.log(`Server running on port ${port}`);
+    if (snapshot.length > 0) {
+        broadcast({ type: 'world', players: snapshot });
+    }
+}, 1000 / TICK_RATE);
+
+console.log(`CORE SYSTEM ONLINE: PORT ${port}`);
