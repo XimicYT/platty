@@ -1,58 +1,71 @@
 const express = require('express');
-const http = require('http');
-const { Server } = require("socket.io");
-const path = require('path');
-
 const app = express();
+const http = require('http');
 const server = http.createServer(app);
+const { Server } = require("socket.io");
 const io = new Server(server, {
-    cors: { origin: "*" },
-    pingInterval: 2000,
-    pingTimeout: 5000
+    cors: { origin: "*" }
 });
 
-// Serve static files from 'public' folder
-app.use(express.static(path.join(__dirname, 'public')));
+// --- 1. HEALTH CHECK ENDPOINT (For Cron Jobs) ---
+// usage: curl https://your-site.com/health
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
 
-// Game State
+app.use(express.static('public'));
+
 let players = {};
 
 io.on('connection', (socket) => {
-    console.log('Player connected:', socket.id);
+    console.log('User connected:', socket.id);
 
-    // Create new player entry
-    players[socket.id] = {
-        x: 100,
-        y: 2000, // Default spawn (bottom)
-        vx: 0,
-        vy: 0,
-        facing: 1,
-        isDashing: false,
-        color: `hsl(${Math.random() * 360}, 100%, 50%)` // Unique color
-    };
+    // --- 2. JOIN REQUEST (Prevent Duplicates) ---
+    socket.on('requestJoin', (data, callback) => {
+        const requestedName = data.username.toUpperCase();
+        
+        // Check if name exists in current players
+        const isDuplicate = Object.values(players).some(p => p.username === requestedName);
 
-    // Send current players to new joiner
-    socket.emit('currentPlayers', players);
+        if (isDuplicate) {
+            callback({ success: false, message: "NAME TAKEN" });
+        } else {
+            // Initialize player on server
+            players[socket.id] = {
+                x: 0, y: 0, 
+                username: requestedName, 
+                color: data.color,
+                id: socket.id
+            };
+            
+            // Send success response
+            callback({ success: true });
+            
+            // Broadcast new player to others
+            socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
+            // Send current players to new player
+            socket.emit('currentPlayers', players);
+        }
+    });
 
-    // Broadcast new player to others
-    socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
-
-    // Handle Movement Updates
     socket.on('playerMovement', (movementData) => {
         if (players[socket.id]) {
-            players[socket.id] = { ...players[socket.id], ...movementData };
-            // Broadcast movement to everyone else (volatile drops packets if laggy, good for movement)
+            players[socket.id].x = movementData.x;
+            players[socket.id].y = movementData.y;
+            players[socket.id].facing = movementData.facing;
+            players[socket.id].isDashing = movementData.isDashing;
+            players[socket.id].color = movementData.color;
+            players[socket.id].username = movementData.username;
             socket.broadcast.emit('playerMoved', { id: socket.id, ...movementData });
         }
     });
 
-    // Handle Dash Visuals
     socket.on('playerDash', () => {
         socket.broadcast.emit('otherPlayerDash', socket.id);
     });
 
     socket.on('disconnect', () => {
-        console.log('Player disconnected:', socket.id);
+        console.log('User disconnected:', socket.id);
         delete players[socket.id];
         io.emit('playerDisconnected', socket.id);
     });
