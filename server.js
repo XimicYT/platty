@@ -11,6 +11,7 @@ const io = new Server(server, {
     pingTimeout: 5000
 });
 
+// Serve static files from 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- GAME STATE ---
@@ -18,7 +19,7 @@ let players = {};
 let currentTaggerId = null;
 const ADMIN_PASSWORD = "neon_secret_pass"; // Change this for security!
 
-// Default fallback map (if builder hasn't set one)
+// Default Map (This is sent to players when they join)
 let currentMapLayout = [
     "1111111111111111111111111111111111111111",
     "1......................................1",
@@ -32,6 +33,13 @@ let currentMapLayout = [
     "1.........1.........1..1.........1...1.1",
     "1.........1.........1..1.........1...1.1",
     "1....2222.1.........1..1.........1...1.1",
+    "1111111111111111111111111111111111111111",
+    "1......................................1",
+    "1......................................1",
+    "1......................................1",
+    "1......................................1",
+    "1......................................1",
+    "1......................................1",
     "1111111111111111111111111111111111111111"
 ];
 
@@ -43,7 +51,7 @@ io.on('connection', (socket) => {
     socket.emit('mapUpdate', currentMapLayout); 
     socket.emit('taggerUpdate', currentTaggerId);
 
-    // 2. Handle Join Request (Name validation)
+    // 2. Handle Join Request
     socket.on('requestJoin', (data, callback) => {
         // Simple validation
         const existingName = Object.values(players).find(p => p.username === data.username);
@@ -74,7 +82,8 @@ io.on('connection', (socket) => {
     socket.on('playerMovement', (movementData) => {
         if (players[socket.id]) {
             players[socket.id] = { ...players[socket.id], ...movementData };
-            socket.broadcast.emit('playerMoved', { id: socket.id, ...movementData });
+            // Volatile emit for movement (drops packets if laggy to prevent buildup)
+            socket.broadcast.volatile.emit('playerMoved', { id: socket.id, ...movementData });
         }
     });
 
@@ -104,11 +113,8 @@ io.on('connection', (socket) => {
         currentMapLayout = data.layout;
         console.log("Map updated by Admin");
         
-        // Broadcast new map to all players (requires client support to hot-reload)
+        // Broadcast new map to all players
         io.emit('mapUpdate', currentMapLayout);
-        
-        // Optional: Reset positions/kick to lobby to prevent getting stuck in walls
-        // players = {}; io.emit('forceDisconnect'); // Uncomment for hard reset
         
         callback({ success: true });
     });
