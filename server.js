@@ -17,7 +17,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- GAME STATE ---
 let players = {};
 let currentTaggerId = null;
-const ADMIN_PASSWORD = "neon_secret_pass"; // Change this for security!
+const ADMIN_PASSWORD = "admin"; // Change this for security!
 
 // Default Map (This is sent to players when they join)
 let currentMapLayout = [
