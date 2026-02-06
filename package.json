@@ -1,7 +1,16 @@
 {
-  "name": "neon-platformer-pro",
-  "version": "2.0.0",
+  "name": "neon-ascent-multiplayer",
+  "version": "1.0.0",
+  "description": "High-performance multiplayer platformer",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "ws": "^8.13.0" }
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
 }
