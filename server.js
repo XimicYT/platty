@@ -14,6 +14,9 @@ const io = new Server(server, {
 // Serve static files from 'public' folder
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
 // --- GAME STATE ---
 let players = {};
 let currentTaggerId = null;
