@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Architect v3.5</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            --bg: #0f0f0f;
+            --panel: #1a1a1a;
+            --border: #333;
+            --accent: #00ffff;
+            --accent-dim: rgba(0, 255, 255, 0.1);
+            --text: #e0e0e0;
+            --text-dim: #888;
+        }
+
+        body { 
+            background: var(--bg); color: var(--text); 
+            font-family: 'JetBrains Mono', monospace; 
+            margin: 0; display: flex; height: 100vh; overflow: hidden;
+            user-select: none;
+        }
+        
+        /* --- SIDEBAR --- */
+        #sidebar {
+            width: 280px; background: var(--panel); padding: 15px;
+            display: flex; flex-direction: column; gap: 12px;
+            border-right: 1px solid var(--border); 
+            box-shadow: 5px 0 20px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        h1 { 
+            margin: 0 0 10px 0; font-size: 18px; color: var(--accent); 
+            text-shadow: 0 0 10px var(--accent-dim); letter-spacing: 1px;
+        }
+
+        .group { 
+            border: 1px solid var(--border); padding: 10px; 
+            border-radius: 6px; background: #222; 
+        }
+        .label { 
+            font-size: 11px; color: var(--text-dim); margin-bottom: 8px; 
+            display: flex; justify-content: space-between; font-weight: bold;
+        }
+
+        /* INPUTS & BUTTONS */
+        input[type="number"], input[type="password"] {
+            width: 100%; background: #000; border: 1px solid #444; color: white;
+            padding: 6px; font-family: inherit; margin-bottom: 5px; box-sizing: border-box;
+        }
+        
+        button {
+            width: 100%; padding: 8px; cursor: pointer; border: none; 
+            font-family: inherit; font-weight: bold; font-size: 12px;
+            margin-top: 4px; border-radius: 4px; transition: 0.2s;
+            background: #444; color: white;
+        }
+        button:hover { background: #555; }
+        button:active { transform: translateY(1px); }
+
+        .row { display: flex; gap: 8px; }
+
+        /* TOOLS GRID */
+        .tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+        
+        .tool {
+            display: flex; align-items: center; gap: 8px; padding: 8px;
+            cursor: pointer; border: 1px solid transparent; border-radius: 4px;
+            background: #2a2a2a; transition: 0.1s;
+        }
+        .tool:hover { background: #333; }
+        .tool.active { border-color: var(--accent); background: var(--accent-dim); }
+        
+        .swatch { 
+            width: 16px; height: 16px; border: 1px solid rgba(255,255,255,0.3); 
+            display: grid; place-items: center; font-size: 10px; color: #000; font-weight: bold;
+        }
+        .key-hint { margin-left: auto; font-size: 10px; color: #555; }
+
+        /* SPECIAL BUTTONS */
+        #btnLoad { background: #5b21b6; }
+        #btnLoad:hover { background: #7c3aed; }
+        
+        #btnResize { background: #333; border: 1px solid #555; }
+        #btnResize:hover { background: #444; border-color: #777; }
+        
+        #btnReset { background: #4a0f0f; color: #ffcccc; margin-top: 5px; }
+        #btnReset:hover { background: #7f1d1d; }
+
+        #btnExport { background: var(--accent); color: #000; margin-top: auto; padding: 12px; }
+        #btnExport:hover { background: white; box-shadow: 0 0 15px var(--accent); }
+        
+        /* CANVAS AREA */
+        #viewport {
+            flex-grow: 1; overflow: hidden; position: relative;
+            background-color: #050505;
+            cursor: crosshair;
+        }
+        #world {
+            transform-origin: 0 0;
+            position: absolute;
+            top: 0; left: 0;
+            background-image: 
+                linear-gradient(#1a1a1a 1px, transparent 1px), 
+                linear-gradient(90deg, #1a1a1a 1px, transparent 1px);
+            background-size: 20px 20px; 
+        }
+        canvas { 
+            display: block;
+            image-rendering: pixelated; 
+        }
+
+        /* OVERLAY HUD */
+        #hud {
+            position: absolute; bottom: 20px; right: 20px;
+            background: rgba(0,0,0,0.8); padding: 10px; border-radius: 4px;
+            font-size: 12px; pointer-events: none; border: 1px solid #333;
+        }
+        #undoStatus {
+            position: absolute; top: 20px; right: 20px;
+            color: #888; font-size: 12px; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h1>NEON ARCHITECT <span style="font-size:10px; color:#555">v3.5</span></h1>
+    
+    <div class="group">
+        <span class="label">PROJECT FILE</span>
+        <input type="file" id="fileInput" accept=".json" style="display: none;">
+        <div class="row">
+            <button id="btnLoad">📂 LOAD</button>
+            <button id="btnSave" onclick="downloadMapFile(generateStringLayout())">💾 SAVE JSON</button>
+        </div>
+    </div>
+
+    <div class="group">
+        <span class="label">MAP SIZE</span>
+        <div class="row">
+            <input type="number" id="inpW" value="100" title="Width">
+            <input type="number" id="inpH" value="60" title="Height">
+        </div>
+        <button id="btnResize">📐 RESIZE (Smart)</button>
+        <button id="btnReset">⚠️ CLEAR / RESET</button>
+    </div>
+
+    <div class="group">
+        <span class="label">BRUSHES</span>
+        <div class="tools-grid">
+            <div class="tool active" onclick="setTool('1')" title="Solid Wall">
+                <div class="swatch" style="background:#444"></div> Wall <span class="key-hint">1</span>
+            </div>
+            <div class="tool" onclick="setTool('2')" title="Deadly Spike">
+                <div class="swatch" style="background:#ff0055"></div> Spike <span class="key-hint">2</span>
+            </div>
+            <div class="tool" onclick="setTool('P')" title="Player Spawn">
+                <div class="swatch" style="background:#00ff00; color:black">P</div> Spawn <span class="key-hint">3</span>
+            </div>
+            <div class="tool" onclick="setTool('.')" title="Eraser">
+                <div class="swatch" style="background:#111; border:1px dashed #555"></div> Erase <span class="key-hint">4</span>
+            </div>
+        </div>
+        
+        <span class="label" style="margin-top:10px">MODES</span>
+        <div class="tools-grid">
+            <div class="tool active" id="modeBrush" onclick="setMode('brush')" title="Standard Brush">
+                🖌️ Brush <span class="key-hint">B</span>
+            </div>
+            <div class="tool" id="modeRect" onclick="setMode('rect')" title="Solid Rectangle">
+                ⬛ Rect <span class="key-hint">R</span>
+            </div>
+            <div class="tool" id="modeFrame" onclick="setMode('frame')" title="Hollow Rectangle (Border)">
+                🔲 Frame <span class="key-hint">E</span>
+            </div>
+            <div class="tool" id="modeFill" onclick="setMode('fill')" title="Flood Fill / Bucket">
+                🪣 Fill <span class="key-hint">F</span>
+            </div>
+            <div class="tool" id="modePick" onclick="setMode('pick')" title="Eyedropper">
+                🖊️ Pick <span class="key-hint">I</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="group" style="margin-top:auto">
+        <span class="label">SERVER UPLOAD</span>
+        <input type="password" id="adminPass" placeholder="Admin Password">
+        <button id="btnExport">🚀 UPLOAD</button>
+        <div id="status" style="font-size:11px; margin-top:5px; text-align:center; min-height:15px; color:#888;">Ready</div>
+    </div>
+</div>
+
+<div id="viewport">
+    <div id="world">
+        <canvas id="editorCanvas"></canvas>
+        <canvas id="previewCanvas" style="position: absolute; top:0; left:0; pointer-events:none;"></canvas>
+    </div>
+    <div id="hud">
+        Pos: <span id="coorDisp">0, 0</span> | <span id="zoomDisp">100%</span> (Zoom: Ctrl+Scroll)
+    </div>
+    <div id="undoStatus">Undo: Ctrl+Z | Redo: Ctrl+Y</div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+    // --- CONSTANTS ---
+    const TILE_SIZE = 20; 
+    const SERVER_URL = "https://platty.onrender.com"; 
+
+    // --- STATE ---
+    let width = 100;
+    let height = 60;
+    let grid = [];
+    
+    // Tools
+    let currentTile = '1';
+    let currentMode = 'brush'; 
+    
+    // History
+    let history = [];
+    let historyStep = -1;
+    const MAX_HISTORY = 50;
+
+    // Viewport & Scrolling
+    let zoom = 1;
+    let panX = 20;
+    let panY = 20;
+    let isPanning = false;
+    let lastMouseX, lastMouseY;
+    let scrollVX = 0;
+    let scrollVY = 0;
+    let scrollFrameId = null;
+
+    // Drawing
+    let isDrawing = false;
+    let startX = 0, startY = 0; 
+    // We store the LAST known mouse event client coordinates to process drawing during autoscroll
+    let lastClientX = 0, lastClientY = 0;
+    
+    // DOM Elements
+    const world = document.getElementById('world');
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('editorCanvas');
+    const ctx = canvas.getContext('2d');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const pCtx = previewCanvas.getContext('2d');
+    const statusDiv = document.getElementById('status');
+    const socket = io(SERVER_URL);
+
+    // --- INITIALIZATION ---
+    initGrid(true);
+    setupInputListeners();
+
+    function initGrid(isFresh) {
+        if(isFresh) {
+            width = parseInt(document.getElementById('inpW').value);
+            height = parseInt(document.getElementById('inpH').value);
+            grid = [];
+            for(let y=0; y<height; y++) {
+                let row = [];
+                for(let x=0; x<width; x++) {
+                    if(y===0 || y===height-1 || x===0 || x===width-1) row.push('1');
+                    else row.push('.');
+                }
+                grid.push(row);
+            }
+        }
+        resizeCanvas();
+        drawMain();
+        saveHistory(); 
+        centerMap();
+    }
+
+    function resizeCanvas() {
+        canvas.width = width * TILE_SIZE;
+        canvas.height = height * TILE_SIZE;
+        previewCanvas.width = canvas.width;
+        previewCanvas.height = canvas.height;
+        world.style.width = canvas.width + "px";
+        world.style.height = canvas.height + "px";
+    }
+
+    function centerMap() {
+        const vpW = viewport.clientWidth;
+        const vpH = viewport.clientHeight;
+        panX = (vpW - canvas.width*zoom)/2;
+        panY = (vpH - canvas.height*zoom)/2;
+        updateTransform();
+    }
+
+    function performResize() {
+        const newW = parseInt(document.getElementById('inpW').value);
+        const newH = parseInt(document.getElementById('inpH').value);
+        const oldW = width;
+        const oldH = height;
+
+        if(newW === oldW && newH === oldH) return; 
+
+        let newGrid = [];
+        for(let y=0; y<newH; y++) {
+            let row = [];
+            for(let x=0; x<newW; x++) {
+                if(y===0 || y===newH-1 || x===0 || x===newW-1) row.push('1');
+                else row.push('.');
+            }
+            newGrid.push(row);
+        }
+
+        const copyW = Math.min(oldW, newW);
+        const copyH = Math.min(oldH, newH);
+
+        for(let y=0; y<copyH; y++) {
+            for(let x=0; x<copyW; x++) {
+                newGrid[y][x] = grid[y][x];
+            }
+        }
+
+        // Smart Border Cleanup
+        if (newW > oldW) {
+            for(let y=1; y < copyH - 1; y++) newGrid[y][oldW - 1] = '.';
+        }
+        if (newH > oldH) {
+            for(let x=1; x < copyW - 1; x++) newGrid[oldH - 1][x] = '.';
+        }
+        if (newW > oldW && newH > oldH) newGrid[oldH - 1][oldW - 1] = '.';
+
+        // Enforce New Borders
+        for(let y=0; y<newH; y++) { newGrid[y][0] = '1'; newGrid[y][newW-1] = '1'; }
+        for(let x=0; x<newW; x++) { newGrid[0][x] = '1'; newGrid[newH-1][x] = '1'; }
+
+        width = newW; height = newH; grid = newGrid;
+        resizeCanvas(); drawMain(); saveHistory();
+        statusDiv.innerText = `Resized to ${width}x${height}`;
+        statusDiv.style.color = "#00ffff";
+    }
+
+    // --- HISTORY SYSTEM ---
+    function saveHistory() {
+        if (historyStep < history.length - 1) {
+            history = history.slice(0, historyStep + 1);
+        }
+        const gridCopy = grid.map(row => [...row]);
+        history.push({ grid: gridCopy, w: width, h: height });
+        if (history.length > MAX_HISTORY) history.shift();
+        else historyStep++;
+    }
+
+    function undo() {
+        if (historyStep > 0) { historyStep--; loadHistoryState(); }
+    }
+    function redo() {
+        if (historyStep < history.length - 1) { historyStep++; loadHistoryState(); }
+    }
+    function loadHistoryState() {
+        const state = history[historyStep];
+        width = state.w; height = state.h;
+        grid = state.grid.map(row => [...row]);
+        document.getElementById('inpW').value = width;
+        document.getElementById('inpH').value = height;
+        resizeCanvas(); drawMain();
+    }
+
+    // --- TOOL LOGIC ---
+    function setTool(t) {
+        currentTile = t;
+        document.querySelectorAll('.tool').forEach(el => {
+            if(!el.id.startsWith('mode')) el.classList.remove('active');
+        });
+        const tools = document.querySelectorAll('.tool');
+        if(t=='1') tools[0].classList.add('active');
+        if(t=='2') tools[1].classList.add('active');
+        if(t=='P') tools[2].classList.add('active');
+        if(t=='.') tools[3].classList.add('active');
+    }
+
+    function setMode(m) {
+        currentMode = m;
+        document.querySelectorAll('[id^="mode"]').forEach(el => el.classList.remove('active'));
+        document.getElementById('mode'+m.charAt(0).toUpperCase()+m.slice(1)).classList.add('active');
+    }
+
+    // --- DRAWING & RENDER ---
+    function drawMain() {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0,0,canvas.width, canvas.height);
+
+        for(let y=0; y<height; y++) {
+            for(let x=0; x<width; x++) {
+                drawTile(ctx, x, y, grid[y][x]);
+            }
+        }
+    }
+
+    function drawTile(context, x, y, type) {
+        let px = x * TILE_SIZE;
+        let py = y * TILE_SIZE;
+        
+        if (type === '.') {
+            context.strokeStyle = "#222";
+            context.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+            return;
+        }
+
+        if(type === '1') {
+            context.fillStyle = "#444";
+            context.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+            context.strokeStyle = "#666";
+            context.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+        } else if (type === '2') {
+            context.fillStyle = "#ff0055";
+            context.beginPath();
+            context.moveTo(px, py+TILE_SIZE);
+            context.lineTo(px+TILE_SIZE/2, py);
+            context.lineTo(px+TILE_SIZE, py+TILE_SIZE);
+            context.fill();
+        } else if (type === 'P') {
+            context.fillStyle = "#00ff00";
+            context.strokeStyle = "#00ff00";
+            context.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
+            context.font = "14px monospace";
+            context.fillText("P", px+5, py+15);
+        }
+    }
+
+    // --- INPUT & AUTOSCROLL ---
+    viewport.addEventListener('mousedown', e => {
+        if(e.button === 1 || (e.button === 0 && e.code === 'Space')) {
+            isPanning = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            e.preventDefault();
+            return;
+        }
+        if(e.button === 0) { 
+            const {x, y} = getGridPos(e.clientX, e.clientY);
+            if(x < 0 || x >= width || y < 0 || y >= height) return;
+
+            if(currentMode === 'pick') {
+                setTool(grid[y][x]);
+                setMode('brush');
+                return;
+            }
+            if(currentMode === 'fill') {
+                floodFill(x, y, currentTile);
+                saveHistory();
+                drawMain();
+                return;
+            }
+
+            isDrawing = true;
+            startX = x;
+            startY = y;
+            lastClientX = e.clientX;
+            lastClientY = e.clientY;
+            
+            if(currentMode === 'brush') {
+                applyBrush(x, y);
+                drawMain();
+            }
+            
+            // Start checking for auto-scroll
+            processAutoScroll(); 
+        }
+    });
+
+    let lastGX = 0, lastGY = 0; 
+    
+    window.addEventListener('mousemove', e => {
+        if(isPanning) {
+            panX += e.clientX - lastMouseX;
+            panY += e.clientY - lastMouseY;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            updateTransform();
+            return;
+        }
+
+        lastClientX = e.clientX;
+        lastClientY = e.clientY;
+
+        // Calculate scroll velocity based on edge proximity
+        const bounds = viewport.getBoundingClientRect();
+        const threshold = 50;
+        const maxSpeed = 15;
+        
+        scrollVX = 0;
+        scrollVY = 0;
+
+        if (isDrawing) {
+            if (e.clientX < bounds.left + threshold) scrollVX = (bounds.left + threshold - e.clientX) / threshold * maxSpeed;
+            if (e.clientX > bounds.right - threshold) scrollVX = -(e.clientX - (bounds.right - threshold)) / threshold * maxSpeed;
+            if (e.clientY < bounds.top + threshold) scrollVY = (bounds.top + threshold - e.clientY) / threshold * maxSpeed;
+            if (e.clientY > bounds.bottom - threshold) scrollVY = -(e.clientY - (bounds.bottom - threshold)) / threshold * maxSpeed;
+        }
+
+        // Logic handled by processAutoScroll loop if scrolling, otherwise update previews here
+        if(!isDrawing || (scrollVX === 0 && scrollVY === 0)) {
+            updateDrawLogic(e.clientX, e.clientY);
+        }
+    });
+
+    function updateDrawLogic(clientX, clientY) {
+        const {x, y} = getGridPos(clientX, clientY);
+        lastGX = x; lastGY = y;
+        document.getElementById('coorDisp').innerText = `${x}, ${y}`;
+
+        if(isDrawing) {
+            if(currentMode === 'brush') {
+                applyBrush(x, y);
+                drawMain();
+            } else if (currentMode === 'rect' || currentMode === 'frame') {
+                pCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                let minX = Math.min(startX, x);
+                let maxX = Math.max(startX, x);
+                let minY = Math.min(startY, y);
+                let maxY = Math.max(startY, y);
+
+                for(let r=minY; r<=maxY; r++) {
+                    for(let c=minX; c<=maxX; c++) {
+                        if(r>=0 && r<height && c>=0 && c<width) {
+                            let isEdge = (r===minY || r===maxY || c===minX || c===maxX);
+                            if(currentMode === 'rect' || (currentMode === 'frame' && isEdge)) {
+                                drawTile(pCtx, c, r, currentTile);
+                                pCtx.fillStyle = "rgba(255, 255, 255, 0.2)";
+                                pCtx.fillRect(c*TILE_SIZE, r*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function processAutoScroll() {
+        if(!isDrawing) return;
+
+        if(scrollVX !== 0 || scrollVY !== 0) {
+            panX += scrollVX;
+            panY += scrollVY;
+            updateTransform();
+            // Since map moved, the mouse is technically over a new tile
+            updateDrawLogic(lastClientX, lastClientY);
+        }
+
+        requestAnimationFrame(processAutoScroll);
+    }
+
+    window.addEventListener('mouseup', () => {
+        isPanning = false;
+        if(isDrawing) {
+            isDrawing = false;
+            // Clear velocities
+            scrollVX = 0; scrollVY = 0;
+
+            if(currentMode === 'rect' || currentMode === 'frame') {
+                let minX = Math.min(startX, lastGX);
+                let maxX = Math.max(startX, lastGX);
+                let minY = Math.min(startY, lastGY);
+                let maxY = Math.max(startY, lastGY);
+
+                for(let r=minY; r<=maxY; r++) {
+                    for(let c=minX; c<=maxX; c++) {
+                        if(r>=0 && r<height && c>=0 && c<width) {
+                            let isEdge = (r===minY || r===maxY || c===minX || c===maxX);
+                            if(currentMode === 'rect' || (currentMode === 'frame' && isEdge)) {
+                                applyTileLogic(c, r, currentTile);
+                            }
+                        }
+                    }
+                }
+                drawMain();
+                saveHistory();
+            }
+            pCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            if(currentMode === 'brush') saveHistory();
+        }
+    });
+
+    // --- NAVIGATION ---
+    viewport.addEventListener('wheel', e => {
+        e.preventDefault(); 
+        if(e.ctrlKey || e.metaKey) {
+            const zoomSensitivity = 0.001;
+            const delta = -e.deltaY * zoomSensitivity;
+            zoom = Math.min(Math.max(0.1, zoom + delta), 5);
+            document.getElementById('zoomDisp').innerText = Math.round(zoom * 100) + "%";
+            updateTransform();
+        } else {
+            panX -= e.deltaX;
+            panY -= e.deltaY;
+            updateTransform();
+        }
+    }, { passive: false });
+
+    function updateTransform() {
+        world.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+    }
+
+    function getGridPos(clientX, clientY) {
+        const rect = viewport.getBoundingClientRect();
+        const vx = clientX - rect.left;
+        const vy = clientY - rect.top;
+        const wx = (vx - panX) / zoom;
+        const wy = (vy - panY) / zoom;
+        const x = Math.floor(wx / TILE_SIZE);
+        const y = Math.floor(wy / TILE_SIZE);
+        return {x, y};
+    }
+
+    function applyBrush(x, y) {
+        if(x>=0 && x<width && y>=0 && y<height) {
+            applyTileLogic(x, y, currentTile);
+        }
+    }
+
+    function applyTileLogic(x, y, type) {
+        if(type === 'P') {
+            for(let r=0; r<height; r++) {
+                for(let c=0; c<width; c++) {
+                    if(grid[r][c] === 'P') grid[r][c] = '.';
+                }
+            }
+        }
+        grid[y][x] = type;
+    }
+
+    function floodFill(startX, startY, newTile) {
+        const targetTile = grid[startY][startX];
+        if (targetTile === newTile) return;
+        const queue = [[startX, startY]];
+        while(queue.length > 0) {
+            const [x, y] = queue.pop();
+            if(x>=0 && x<width && y>=0 && y<height && grid[y][x] === targetTile) {
+                applyTileLogic(x, y, newTile);
+                queue.push([x+1, y]); queue.push([x-1, y]);
+                queue.push([x, y+1]); queue.push([x, y-1]);
+            }
+        }
+    }
+
+    // --- KEYBOARD & I/O ---
+    function setupInputListeners() {
+        window.addEventListener('keydown', e => {
+            if (e.target.tagName === 'INPUT') return;
+            if(e.key === '1') setTool('1');
+            if(e.key === '2') setTool('2');
+            if(e.key === '3') setTool('P');
+            if(e.key === '4') setTool('.');
+            if(e.key.toLowerCase() === 'b') setMode('brush');
+            if(e.key.toLowerCase() === 'r') setMode('rect');
+            if(e.key.toLowerCase() === 'e') setMode('frame');
+            if(e.key.toLowerCase() === 'f') setMode('fill');
+            if(e.key.toLowerCase() === 'i') setMode('pick');
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+        });
+        window.onbeforeunload = function() { return "You have unsaved changes!"; };
+    }
+
+    function generateStringLayout() { return grid.map(row => row.join('')); }
+
+    function downloadMapFile(layoutStrings) {
+        const mapData = { width, height, layout: layoutStrings, timestamp: new Date().toISOString() };
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(mapData));
+        const a = document.createElement('a'); a.href = dataStr;
+        a.download = "neon_map_" + Date.now() + ".json"; a.click();
+        statusDiv.innerText = "Saved to Disk";
+    }
+
+    document.getElementById('btnLoad').addEventListener('click', () => document.getElementById('fileInput').click());
+    
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = JSON.parse(e.target.result);
+                width = data.width; height = data.height;
+                grid = data.layout.map(rowStr => rowStr.split(''));
+                document.getElementById('inpW').value = width;
+                document.getElementById('inpH').value = height;
+                resizeCanvas(); drawMain(); saveHistory(); 
+                statusDiv.innerText = "Loaded: " + file.name;
+                statusDiv.style.color = "#00ff00";
+            } catch (err) { alert("Invalid Map File"); }
+            document.getElementById('fileInput').value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+        if(confirm("⚠️ This will DELETE your map and start a blank one. Are you sure?")) initGrid(true);
+    });
+    document.getElementById('btnResize').addEventListener('click', performResize);
+
+    document.getElementById('btnExport').addEventListener('click', () => {
+        const pass = document.getElementById('adminPass').value;
+        if(!pass) { statusDiv.innerText = "Need Password"; statusDiv.style.color="red"; return; }
+        
+        statusDiv.innerText = "Uploading..."; statusDiv.style.color = "yellow";
+        const stringLayout = generateStringLayout();
+        downloadMapFile(stringLayout); 
+
+        socket.emit('adminUpdateMap', { password: pass, layout: stringLayout }, (res) => {
+            if(res.success) {
+                statusDiv.innerText = "UPLOAD SUCCESS!"; statusDiv.style.color = "#00ff00";
+            } else {
+                statusDiv.innerText = "Error: " + res.message; statusDiv.style.color = "red";
+            }
+        });
+    });
+</script>
+</body>
+</html>
