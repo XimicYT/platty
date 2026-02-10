@@ -11,8 +11,18 @@ const io = new Server(server, {
     pingTimeout: 5000
 });
 
-// Serve static files from 'public' folder
-app.use(express.static(path.join(__dirname, 'public')));
+// 1. Serve all static files in the current directory
+app.use(express.static(__dirname));
+
+// 2. Explicitly serve index.html at the root URL ('/')
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// 3. Serve builder.html at a clean URL ('/builder')
+app.get('/builder', (req, res) => {
+    res.sendFile(path.join(__dirname, 'builder.html'));
+});
 
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
