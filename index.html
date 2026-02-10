@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neon Tag: Ultimate Map</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #050505; 
+            font-family: 'JetBrains Mono', monospace; 
+            user-select: none; 
+            color: white;
+        }
+
+        /* --- GAME UI --- */
+        canvas { display: block; }
+        #gameUI { 
+            display: none; 
+            position: absolute; 
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; 
+        }
+        
+        #topLeftUI {
+            position: absolute; top: 20px; left: 20px;
+            text-shadow: 0 0 10px #000;
+        }
+
+        /* TAGGER UI (Top Right) */
+        #taggerUI {
+            position: absolute; top: 20px; right: 20px;
+            text-align: right;
+            text-shadow: 0 0 10px #000;
+        }
+        .tagger-label { font-size: 12px; color: #aaa; font-weight: bold; }
+        .tagger-name { font-size: 24px; font-weight: 800; color: #ff0000; margin-top: 5px; }
+
+        h1.game-title { margin: 0; font-size: 24px; font-weight: 800; font-style: italic; letter-spacing: -1px; }
+        .key { background: #333; padding: 2px 6px; border-radius: 4px; border-bottom: 2px solid #555; font-size: 12px; }
+        #networkStatus { font-size: 12px; font-weight: bold; margin-top: 5px; }
+
+        /* --- MAIN MENU --- */
+        #mainMenu {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 5, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+
+        .menu-box {
+            background: #111;
+            border: 1px solid #333;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.1);
+            text-align: center;
+            width: 340px; 
+        }
+
+        .title {
+            font-size: 42px; font-weight: 900; font-style: italic;
+            background: linear-gradient(45deg, #00ffff, #ff00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+            letter-spacing: -2px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            background: #222;
+            border: 2px solid #333;
+            color: white;
+            font-family: inherit;
+            font-size: 16px;
+            border-radius: 6px;
+            margin-bottom: 5px;
+            outline: none;
+            text-transform: uppercase;
+            text-align: center;
+            box-sizing: border-box; 
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus { border-color: #00ffff; }
+
+        #nameError {
+            color: #ff0055;
+            font-size: 12px;
+            height: 15px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .color-picker {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap; 
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        .color-btn {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .color-btn:hover { transform: scale(1.2); }
+        .color-btn.selected { border-color: white; box-shadow: 0 0 10px white; transform: scale(1.1); }
+
+        #playBtn {
+            width: 100%;
+            padding: 15px;
+            background: #333;
+            color: #777;
+            border: none;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 18px;
+            font-weight: 800;
+            cursor: not-allowed;
+            transition: 0.3s;
+        }
+        #playBtn.ready {
+            background: #00ffff;
+            color: #000;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+        }
+        #playBtn.ready:hover { background: #fff; box-shadow: 0 0 30px rgba(255, 255, 255, 0.6); }
+
+        .status-msg { margin-top: 15px; font-size: 12px; color: #555; height: 14px;}
+        .online { color: #00ff00; }
+        .offline { color: #ff0055; }
+
+    </style>
+</head>
+<body>
+
+<div id="mainMenu">
+    <div class="menu-box">
+        <div class="title">NEON TAG</div>
+        <input type="text" id="usernameInput" placeholder="ENTER CODENAME" maxlength="10">
+        <div id="nameError">NAME TAKEN</div>
+        <div class="color-picker" id="colorPicker"></div>
+        <button id="playBtn" disabled>CONNECTING...</button>
+        <div class="status-msg" id="menuStatus">Establishing Uplink...</div>
+    </div>
+</div>
+
+<div id="gameUI">
+    <div id="topLeftUI">
+        <h1 class="game-title">NEON ARENA <span style="font-size:14px; color:#ff0055">LIVE</span></h1>
+        <div id="networkStatus">Waiting...</div>
+        <div style="margin-top:10px; color:#aaa; font-size:12px;">
+            <span class="key">WASD</span> Move &nbsp; <span class="key">SHIFT</span> Dash &nbsp; <span class="key">SPACE</span> Jump
+        </div>
+    </div>
+
+    <div id="taggerUI">
+        <div class="tagger-label">CURRENT TAGGER</div>
+        <div class="tagger-name" id="taggerNameDisplay">NO ONE</div>
+    </div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+<script>
+// --- CONFIGURATION ---
+const SERVER_URL = 'https://platty.onrender.com/'; // Automatically uses current Render URL
+
+const PRESET_COLORS = [
+    '#00ffff', '#00ff99', '#ffff00', '#ff00ff', '#9900ff', '#ff8800', '#ffffff', '#0066ff'
+];
+
+// NETWORK SETTINGS
+const NETWORK_TICK_RATE = 1 / 30; 
+const INTERPOLATION_FACTOR = 0.15; 
+const DEATH_STUN_DURATION = 3.0; 
+const TAG_STUN_DURATION = 3.0; 
+
+// --- STATE ---
+let socket;
+let isOnline = false;
+let gameRunning = false;
+let myId = null;
+let myName = "GUEST";
+let myColor = PRESET_COLORS[0];
+let otherPlayers = {};
+let currentTaggerId = null; 
+let initialMapData = null; // Store map from server here
+
+// --- UTILS ---
+function lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
+
+// --- MENU LOGIC ---
+const menu = document.getElementById('mainMenu');
+const playBtn = document.getElementById('playBtn');
+const menuStatus = document.getElementById('menuStatus');
+const nameInput = document.getElementById('usernameInput');
+const nameError = document.getElementById('nameError');
+const colorContainer = document.getElementById('colorPicker');
+const taggerNameDisplay = document.getElementById('taggerNameDisplay');
+
+PRESET_COLORS.forEach((col, index) => {
+    let btn = document.createElement('div');
+    btn.className = `color-btn ${index === 0 ? 'selected' : ''}`;
+    btn.style.backgroundColor = col;
+    btn.onclick = () => {
+        document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        myColor = col;
+    };
+    colorContainer.appendChild(btn);
+});
+
+function checkReady() {
+    if(nameInput.value.length > 0 && (isOnline || socket.disconnected)) {
+        playBtn.disabled = false;
+        playBtn.classList.add('ready');
+        playBtn.innerText = isOnline ? "INITIATE LAUNCH" : "PLAY OFFLINE";
+    } else {
+        playBtn.disabled = true;
+        playBtn.classList.remove('ready');
+    }
+}
+
+nameInput.addEventListener('input', () => {
+    nameError.style.opacity = '0';
+    checkReady();
+});
+
+playBtn.addEventListener('click', () => { 
+    if(!playBtn.disabled) { 
+        const tempName = nameInput.value || "GUEST";
+        if (!isOnline) {
+            myName = tempName;
+            startGame();
+            return;
+        }
+        playBtn.innerText = "VERIFYING...";
+        playBtn.disabled = true;
+        socket.emit('requestJoin', { username: tempName, color: myColor }, (response) => {
+            if (response.success) {
+                myName = tempName;
+                myId = response.id; 
+                startGame();
+            } else {
+                playBtn.disabled = false;
+                playBtn.classList.add('ready');
+                playBtn.innerText = "INITIATE LAUNCH";
+                nameError.innerText = response.message;
+                nameError.style.opacity = '1';
+                nameInput.style.borderColor = '#ff0055';
+                setTimeout(() => nameInput.style.borderColor = '#333', 500);
+            }
+        });
+    } 
+});
+
+// --- NETWORKING ---
+try {
+    socket = io(SERVER_URL, { transports: ['websocket', 'polling'], reconnectionAttempts: 3 });
+
+    socket.on('connect', () => {
+        isOnline = true;
+        myId = socket.id;
+        menuStatus.innerText = "● SERVERS ONLINE";
+        menuStatus.className = "status-msg online";
+        playBtn.innerText = "ENTER GAME";
+        checkReady();
+    });
+
+    socket.on('connect_error', () => {
+        isOnline = false;
+        menuStatus.innerText = "● OFFLINE MODE";
+        menuStatus.className = "status-msg offline";
+        checkReady();
+    });
+
+    socket.on('currentPlayers', (players) => {
+        Object.keys(players).forEach((id) => {
+            if (id !== myId) {
+                otherPlayers[id] = players[id];
+                otherPlayers[id].targetX = players[id].x;
+                otherPlayers[id].targetY = players[id].y;
+            }
+        });
+    });
+
+    socket.on('newPlayer', (data) => {
+        if(data.id !== myId) {
+            otherPlayers[data.id] = data.player;
+            otherPlayers[data.id].targetX = data.player.x;
+            otherPlayers[data.id].targetY = data.player.y;
+        }
+    });
+
+    socket.on('playerMoved', (data) => {
+        if(otherPlayers[data.id]) {
+            let p = otherPlayers[data.id];
+            const dist = Math.abs(p.x - data.x) + Math.abs(p.y - data.y);
+            if (dist > 200) { p.x = data.x; p.y = data.y; }
+            p.targetX = data.x;
+            p.targetY = data.y;
+            p.facing = data.facing;
+            p.isDashing = data.isDashing;
+            p.color = data.color;
+            p.username = data.username;
+        }
+    });
+    
+    socket.on('otherPlayerDash', (id) => {
+        if(otherPlayers[id]) {
+            VFX.spawnBurst(otherPlayers[id].x + 15, otherPlayers[id].y + 15, 10, otherPlayers[id].color);
+        }
+    });
+
+    socket.on('playerDisconnected', (id) => { delete otherPlayers[id]; });
+
+    // --- MAP UPDATE LOGIC ---
+    socket.on('mapUpdate', (newLayout) => {
+        initialMapData = newLayout;
+        
+        // If game is already running, update map live!
+        if(gameRunning) {
+            gameMap = new GameMap(newLayout);
+            // Respawn player to safe spot if map changes while playing
+            if(player) {
+                player.x = gameMap.start.x;
+                player.y = gameMap.start.y;
+                player.vx = 0; player.vy = 0;
+            }
+        }
+    });
+    
+    // --- TAGGING LOGIC EVENTS ---
+    socket.on('taggerUpdate', (id) => {
+        let oldTagger = currentTaggerId;
+        currentTaggerId = id;
+        updateTaggerUI();
+
+        if (currentTaggerId === myId && oldTagger !== myId) {
+            if (player) player.applyStun(TAG_STUN_DURATION);
+            VFX.addShake(20);
+            VFX.glitch = 10;
+            VFX.spawnBurst(player.x + player.w/2, player.y + player.h/2, 50, '#ff0000');
+        }
+
+        if (currentTaggerId !== myId && otherPlayers[currentTaggerId]) {
+            let p = otherPlayers[currentTaggerId];
+            VFX.spawnBurst(p.x + 15, p.y + 15, 30, '#ff0000');
+        }
+    });
+
+} catch (e) {
+    console.log("Socket init failed");
+}
+
+function updateTaggerUI() {
+    if (!currentTaggerId) {
+        taggerNameDisplay.innerText = "WAITING...";
+        taggerNameDisplay.style.color = "#aaa";
+        return;
+    }
+    
+    let name = "UNKNOWN";
+    if (currentTaggerId === myId) name = myName + " (YOU)";
+    else if (otherPlayers[currentTaggerId]) name = otherPlayers[currentTaggerId].username;
+
+    taggerNameDisplay.innerText = name;
+    taggerNameDisplay.style.color = "#ff0000";
+}
+
+
+// --- GAME CONSTANTS ---
+const TILE_SIZE = 40;
+const GRAVITY_BASE = 1800;
+const MOVE_SPEED = 500;
+const MAX_FALL_SPEED = 1400; 
+const ACCEL_GROUND = 4000;
+const ACCEL_AIR = 2500;
+const FRICTION_GROUND = 3500;
+const FRICTION_AIR = 1000;
+const JUMP_FORCE = 720;
+const DASH_SPEED = 1100;
+const DASH_DURATION = 0.12;
+const DASH_COOLDOWN = 0.5;
+const WALL_SLIDE_SPEED = 150;
+// FIXED WALL JUMP: Stronger X push
+const WALL_JUMP_FORCE = { x: 280, y: 680 }; 
+
+// --- INPUT ---
+const Input = {
+    keys: {},
+    jumpPressedAt: 0,
+    dashPressedAt: 0,
+    init() {
+        window.addEventListener('keydown', e => {
+            if(e.repeat) return;
+            this.keys[e.code] = true;
+            if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) this.jumpPressedAt = Date.now() / 1000;
+            if (['ShiftLeft', 'ShiftRight', 'KeyK', 'KeyZ'].includes(e.code)) this.dashPressedAt = Date.now() / 1000;
+        });
+        window.addEventListener('keyup', e => this.keys[e.code] = false);
+        window.addEventListener('blur', () => { this.keys = {}; });
+    },
+    isDown(code) { return !!this.keys[code]; },
+    getAxis() {
+        let x = 0;
+        if (this.isDown('ArrowLeft') || this.isDown('KeyA')) x -= 1;
+        if (this.isDown('ArrowRight') || this.isDown('KeyD')) x += 1;
+        return x;
+    }
+};
+
+// --- VFX ---
+class VFX {
+    static shake = 0;
+    static glitch = 0;
+    static particles = [];
+    static addShake(amount) { this.shake = Math.min(this.shake + amount, 30); }
+    static spawnParticle(x, y, color, speed, life, sizeMult=1) {
+        this.particles.push({
+            x, y, color, life, maxLife: life,
+            vx: (Math.random() - 0.5) * speed,
+            vy: (Math.random() - 0.5) * speed,
+            size: (Math.random() * 5 + 3) * sizeMult
+        });
+    }
+    static spawnBurst(x, y, count, color) {
+        for(let i=0; i<count; i++) this.spawnParticle(x, y, color, 250, 0.6 + Math.random()*0.4);
+    }
+    static update(dt) {
+        if(this.shake > 0) this.shake -= 60 * dt;
+        if(this.shake < 0) this.shake = 0;
+        
+        if(this.glitch > 0) this.glitch -= 40 * dt;
+        if(this.glitch < 0) this.glitch = 0;
+
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            let p = this.particles[i];
+            p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; p.size *= 0.92;
+            if (p.life <= 0) this.particles.splice(i, 1);
+        }
+    }
+    static draw(ctx, camX, camY) {
+        // Use additive blending for neon effect
+        ctx.globalCompositeOperation = 'lighter';
+        for(let p of this.particles) {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life / p.maxLife;
+            ctx.beginPath();
+            ctx.arc(p.x - camX, p.y - camY, p.size, 0, Math.PI*2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1.0;
+        ctx.globalCompositeOperation = 'source-over';
+    }
+}
+
+// --- PLAYER ---
+class Player {
+    constructor(x, y) {
+        this.startPos = {x, y};
+        this.x = x; this.y = y;
+        this.w = TILE_SIZE - 12; this.h = TILE_SIZE - 4;
+        this.vx = 0; this.vy = 0;
+        this.onGround = false; this.onWall = 0; this.facing = 1;
+        this.isDashing = false;
+        this.dashTimer = 0; this.dashCooldownTimer = 0;
+        this.wallJumpLock = 0; this.coyoteTime = 0;
+        this.trail = []; this.trailTimer = 0;
+        this.netTimer = 0; 
+        this.stunTimer = 0;
+    }
+
+    applyStun(duration) {
+        this.stunTimer = duration;
+        this.vx = 0; this.vy = 0;
+    }
+
+    approach(current, target, amount) {
+        if (current < target) return Math.min(current + amount, target);
+        if (current > target) return Math.max(current - amount, target);
+        return target;
+    }
+
+    update(dt, map) {
+        let inputX = Input.getAxis();
+        
+        if (this.stunTimer > 0) {
+            this.stunTimer -= dt;
+            inputX = 0; 
+        }
+
+        if (currentTaggerId === myId && this.stunTimer <= 0) {
+            for(let id in otherPlayers) {
+                let p = otherPlayers[id];
+                if (this.x < p.x + 30 && this.x + this.w > p.x &&
+                    this.y < p.y + 30 && this.y + this.h > p.y) {
+                    socket.emit('tagHit', id);
+                    this.stunTimer = 0.5; 
+                    VFX.addShake(15);
+                    VFX.glitch = 10;
+                    break; 
+                }
+            }
+        }
+
+        this.dashCooldownTimer -= dt;
+        if (this.wallJumpLock > 0) { this.wallJumpLock -= dt; inputX = 0; }
+
+        if (this.isDashing) {
+            this.dashTimer -= dt;
+            this.vy = 0;
+            this.vx = this.facing * DASH_SPEED;
+            this.trailTimer -= dt;
+            if(this.trailTimer <= 0) {
+                this.trail.push({x: this.x, y: this.y, alpha: 0.9});
+                this.trailTimer = 0.015;
+            }
+            if (this.dashTimer <= 0) { this.isDashing = false; this.vx *= 0.5; }
+            this.move(dt, map);
+            return;
+        }
+
+        const wantsDash = (Date.now()/1000 - Input.dashPressedAt) < 0.1;
+        if (wantsDash && this.dashCooldownTimer <= 0 && this.stunTimer <= 0) {
+            this.isDashing = true;
+            this.dashTimer = DASH_DURATION;
+            this.dashCooldownTimer = DASH_COOLDOWN;
+            Input.dashPressedAt = 0;
+            VFX.addShake(8);
+            VFX.glitch = 5;
+            VFX.spawnBurst(this.x + this.w/2, this.y + this.h/2, 12, myColor);
+            if(isOnline && socket) socket.emit('playerDash');
+            return;
+        }
+
+        let accel = this.onGround ? ACCEL_GROUND : ACCEL_AIR;
+        let friction = this.onGround ? FRICTION_GROUND : FRICTION_AIR;
+        if (inputX !== 0) {
+            this.vx = this.approach(this.vx, inputX * MOVE_SPEED, accel * dt);
+            this.facing = inputX;
+        } else {
+            this.vx = this.approach(this.vx, 0, friction * dt);
+        }
+
+        let appliedGravity = GRAVITY_BASE;
+        if (Math.abs(this.vy) < 100) appliedGravity *= 0.5;
+        if (this.vy > 0) appliedGravity *= 1.4;
+
+        // --- WALL SLIDE LOGIC ---
+        if (this.onWall !== 0 && !this.onGround && this.vy > 0 && this.stunTimer <= 0) {
+            // Check if pressing INTO wall
+            if ((this.onWall === -1 && inputX <= 0) || (this.onWall === 1 && inputX >= 0)) {
+                this.vy = this.approach(this.vy, WALL_SLIDE_SPEED, 2000 * dt);
+                // Wall slide particles
+                if(Math.random() > 0.7) {
+                    let px = this.onWall === 1 ? this.x + this.w : this.x;
+                    VFX.spawnParticle(px, this.y + this.h, '#aaa', 50, 0.4);
+                }
+            } else { this.vy += appliedGravity * dt; }
+        } else { 
+            this.vy += appliedGravity * dt; 
+        }
+
+        if(this.vy > MAX_FALL_SPEED) this.vy = MAX_FALL_SPEED;
+
+        const wantsJump = (Date.now()/1000 - Input.jumpPressedAt) < 0.15;
+        if (wantsJump && this.stunTimer <= 0) {
+            if (this.onGround || this.coyoteTime > 0) {
+                // Ground Jump
+                this.vy = -JUMP_FORCE;
+                this.onGround = false; this.coyoteTime = 0; Input.jumpPressedAt = 0;
+                VFX.spawnBurst(this.x + this.w/2, this.y + this.h, 5, '#fff');
+            } else if (this.onWall !== 0) {
+                // Wall Jump
+                this.vy = -WALL_JUMP_FORCE.y;
+                this.vx = -this.onWall * WALL_JUMP_FORCE.x; // Kick away from wall
+                this.wallJumpLock = 0.15; // Lock input briefly
+                this.facing = -this.onWall; 
+                this.onWall = 0; Input.jumpPressedAt = 0;
+                VFX.spawnBurst(this.x + (this.onWall === 1 ? this.w : 0), this.y + this.h/2, 12, '#fff');
+                VFX.addShake(4);
+            }
+        }
+        if (this.vy < -200 && !Input.isDown('Space') && !Input.isDown('ArrowUp') && !Input.isDown('KeyW')) this.vy *= 0.5;
+
+        this.move(dt, map);
+        if(this.onGround) this.coyoteTime = 0.1; else this.coyoteTime -= dt;
+
+        this.netTimer -= dt;
+    }
+
+    tryEmitState() {
+        if(this.netTimer <= 0 && isOnline && socket && socket.connected) {
+            this.netTimer = NETWORK_TICK_RATE;
+            socket.emit('playerMovement', {
+                x: this.x, y: this.y, vx: this.vx, vy: this.vy,
+                facing: this.facing, isDashing: this.isDashing,
+                color: myColor, username: myName
+            });
+        }
+    }
+
+    move(dt, map) {
+        this.x += this.vx * dt; 
+        this.handleCollisions(map, true);
+
+        let moveAmount = this.vy * dt;
+        const stepLimit = 15; 
+        this.onGround = false;
+
+        while (Math.abs(moveAmount) > 0) {
+            let step = moveAmount;
+            if (Math.abs(step) > stepLimit) step = Math.sign(moveAmount) * stepLimit;
+            this.y += step;
+            moveAmount -= step;
+            if (this.handleCollisions(map, false)) moveAmount = 0;
+        }
+
+        // Wall detection - slightly extended range (2px) to make it "sticky"
+        this.onWall = 0;
+        if(map.collide(this.x - 2, this.y, this.w, this.h)) this.onWall = -1;
+        if(map.collide(this.x + 2, this.y, this.w, this.h)) this.onWall = 1;
+        
+        if (this.y > map.height) this.die(map);
+    }
+
+    handleCollisions(map, isX) {
+        let hasCollided = false;
+        if (isX) {
+            if (map.collide(this.x, this.y, this.w, this.h)) {
+                if (this.vx > 0) this.x = (Math.floor((this.x + this.w) / TILE_SIZE)) * TILE_SIZE - this.w - 0.001;
+                else if (this.vx < 0) this.x = (Math.floor(this.x / TILE_SIZE) + 1) * TILE_SIZE;
+                this.vx = 0;
+                hasCollided = true;
+            }
+        } else {
+            if (map.collide(this.x, this.y, this.w, this.h)) {
+                if (this.vy > 0) {
+                    this.y = (Math.floor((this.y + this.h) / TILE_SIZE)) * TILE_SIZE - this.h - 0.001;
+                    this.onGround = true;
+                    if(this.vy > 500) { VFX.addShake(4); VFX.spawnBurst(this.x + this.w/2, this.y + this.h, 8, '#ccc'); }
+                } else if (this.vy < 0) {
+                    this.y = (Math.floor(this.y / TILE_SIZE) + 1) * TILE_SIZE;
+                }
+                this.vy = 0;
+                hasCollided = true;
+            }
+        }
+        return hasCollided;
+    }
+
+    checkHazards(map) {
+        for(let s of map.spikes) {
+            if (this.x < s.x + 30 && this.x + this.w > s.x + 10 &&
+                this.y < s.y + 30 && this.y + this.h > s.y + 15) {
+                this.die(map);
+            }
+        }
+    }
+
+    die(map) {
+        VFX.spawnBurst(this.x + this.w/2, this.y + this.h/2, 50, '#ff0055');
+        VFX.addShake(15);
+        VFX.glitch = 20;
+        this.x = this.startPos.x;
+        this.y = this.startPos.y;
+        this.vx = 0; this.vy = 0;
+        this.applyStun(DEATH_STUN_DURATION);
+    }
+
+    draw(ctx, camX, camY) {
+        // Draw Trail
+        for(let i=this.trail.length-1; i>=0; i--) {
+            let t = this.trail[i]; t.alpha -= 0.05;
+            if(t.alpha <= 0) this.trail.splice(i, 1);
+            else {
+                ctx.fillStyle = `rgba(255, 255, 255, ${t.alpha * 0.3})`;
+                ctx.fillRect(t.x - camX, t.y - camY, this.w, this.h);
+            }
+        }
+
+        let baseColor = (myId === currentTaggerId) ? '#ff0000' : myColor;
+        let color = this.isDashing ? '#fff' : baseColor;
+        if (this.dashCooldownTimer > 0 && !this.isDashing) color = '#555';
+        if (this.stunTimer > 0) color = '#333'; 
+
+        // Glow effect behind player
+        let grad = ctx.createRadialGradient(
+            this.x - camX + this.w/2, this.y - camY + this.h/2, 0,
+            this.x - camX + this.w/2, this.y - camY + this.h/2, 60
+        );
+        grad.addColorStop(0, color);
+        grad.addColorStop(1, 'transparent');
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.4;
+        ctx.fillRect(this.x - camX - 50, this.y - camY - 50, this.w + 100, this.h + 100);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1.0;
+
+        ctx.fillStyle = color;
+        ctx.shadowColor = (myId === currentTaggerId) ? '#ff0000' : color; 
+        ctx.shadowBlur = (myId === currentTaggerId) ? 30 : 20; 
+
+        let sx = 0, sy = 0;
+        if(Math.abs(this.vy) > 200) { sx = -2; sy = 4; }
+        if(Math.abs(this.vx) > 300) { sx = 4; sy = -2; }
+        
+        ctx.fillRect(this.x - camX - sx/2, this.y - camY - sy, this.w + sx, this.h + sy);
+        ctx.shadowBlur = 0;
+        
+        ctx.fillStyle = "white";
+        ctx.font = "bold 10px monospace";
+        ctx.textAlign = "center";
+        
+        if (this.stunTimer > 0) {
+            ctx.fillStyle = "#ff0055";
+            let msg = (myId === currentTaggerId) ? "TAGGER FROZEN" : "REBOOTING";
+            ctx.fillText(msg, this.x - camX + this.w/2, this.y - camY - 20);
+            
+            let barW = 30; let barH = 4;
+            let maxStun = (myId === currentTaggerId) ? TAG_STUN_DURATION : DEATH_STUN_DURATION;
+            let pct = this.stunTimer / maxStun;
+            ctx.fillStyle = "#222";
+            ctx.fillRect(this.x - camX + this.w/2 - barW/2, this.y - camY - 15, barW, barH);
+            ctx.fillStyle = "#ff0055";
+            ctx.fillRect(this.x - camX + this.w/2 - barW/2, this.y - camY - 15, barW * pct, barH);
+        } else {
+            if (myId === currentTaggerId) {
+                 ctx.fillStyle = "#ff0000";
+                 ctx.font = "bold 14px monospace";
+                 ctx.fillText("▼", this.x - camX + this.w/2, this.y - camY - 15);
+            }
+            ctx.fillStyle = "white";
+            ctx.font = "bold 10px monospace";
+            ctx.fillText(myName, this.x - camX + this.w/2, this.y - camY - 5);
+        }
+    }
+}
+
+class GameMap {
+    constructor(data) {
+        // ACCEPT MAP DATA FROM SERVER
+        const layout = data || [
+            "1111111111111111111111111111111111111111",
+            "1......................................1",
+            "1......................................1",
+            "1..P...................................1",
+            "1111111111111111111111111111111111111111"
+        ];
+        
+        this.tiles = []; this.spikes = [];
+        this.cols = layout[0].length; this.rows = layout.length;
+        this.width = this.cols * TILE_SIZE; this.height = this.rows * TILE_SIZE;
+        for(let y=0; y<this.rows; y++) {
+            for(let x=0; x<this.cols; x++) {
+                let char = layout[y][x];
+                let px = x * TILE_SIZE; let py = y * TILE_SIZE;
+                if(char === '1') this.tiles.push({x: px, y: py});
+                if(char === '2') this.spikes.push({x: px, y: py});
+                if(char === 'P') this.start = {x: px, y: py};
+            }
+        }
+        if(!this.start) this.start = {x: 100, y: 100};
+    }
+    collide(x, y, w, h) {
+        let startCol = Math.floor(x / TILE_SIZE); let endCol = Math.floor((x + w) / TILE_SIZE);
+        let startRow = Math.floor(y / TILE_SIZE); let endRow = Math.floor((y + h) / TILE_SIZE);
+        for (let t of this.tiles) {
+            let tx = t.x / TILE_SIZE; let ty = t.y / TILE_SIZE;
+            if (tx >= startCol && tx <= endCol && ty >= startRow && ty <= endRow) return true;
+        }
+        return false;
+    }
+    draw(ctx, camX, camY, viewW, viewH) {
+        ctx.fillStyle = '#222'; ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+        for(let t of this.tiles) {
+            if(t.x > camX + viewW || t.x + TILE_SIZE < camX || t.y > camY + viewH || t.y + TILE_SIZE < camY) continue;
+            ctx.fillRect(t.x - camX, t.y - camY, TILE_SIZE, TILE_SIZE);
+            ctx.strokeRect(t.x - camX, t.y - camY, TILE_SIZE, TILE_SIZE);
+        }
+        ctx.fillStyle = '#ff0055'; ctx.shadowBlur = 10; ctx.shadowColor = '#ff0055';
+        for(let s of this.spikes) {
+            if(s.x > camX + viewW || s.x + TILE_SIZE < camX || s.y > camY + viewH || s.y + TILE_SIZE < camY) continue;
+            ctx.beginPath(); ctx.moveTo(s.x - camX, s.y + TILE_SIZE - camY);
+            ctx.lineTo(s.x + TILE_SIZE/2 - camX, s.y - camY);
+            ctx.lineTo(s.x + TILE_SIZE - camX, s.y + TILE_SIZE - camY); ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+    }
+}
+
+// --- ENGINE ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let gameMap, player;
+let lastTime = 0;
+let accumulator = 0;
+const FIXED_STEP = 1 / 60; 
+const MAX_ACCUMULATOR = 0.5;
+let camera = {x: 0, y: 0};
+
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize); resize();
+Input.init();
+
+function startGame() {
+    menu.style.display = 'none';
+    document.getElementById('gameUI').style.display = 'block';
+    
+    document.getElementById('networkStatus').innerText = isOnline ? `● ONLINE: ${myName}` : "● OFFLINE MODE";
+    document.getElementById('networkStatus').style.color = isOnline ? "#00ff00" : "#ff0055";
+    
+    updateTaggerUI();
+
+    // Use map data from server, or default if offline/loading
+    gameMap = new GameMap(initialMapData);
+    player = new Player(gameMap.start.x, gameMap.start.y);
+    gameRunning = true;
+    requestAnimationFrame(loop);
+}
+
+function loop(timestamp) {
+    if(!gameRunning) return;
+
+    if (!lastTime) lastTime = timestamp;
+    let frameTime = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+
+    if (frameTime > MAX_ACCUMULATOR) frameTime = MAX_ACCUMULATOR;
+    accumulator += frameTime;
+
+    while (accumulator >= FIXED_STEP) {
+        player.update(FIXED_STEP, gameMap);
+        player.checkHazards(gameMap);
+        VFX.update(FIXED_STEP);
+        accumulator -= FIXED_STEP;
+    }
+
+    if (player) player.tryEmitState();
+
+    if (isOnline) {
+        for(let id in otherPlayers) {
+            let p = otherPlayers[id];
+            p.x = lerp(p.x, p.targetX, INTERPOLATION_FACTOR);
+            p.y = lerp(p.y, p.targetY, INTERPOLATION_FACTOR);
+        }
+    }
+
+    let targetX = player.x + player.w/2 - canvas.width/2;
+    let targetY = player.y + player.h/2 - canvas.height/2;
+    camera.x = lerp(camera.x, targetX, 0.1); 
+    camera.y = lerp(camera.y, targetY, 0.1);
+    
+    camera.x = Math.max(0, Math.min(camera.x, gameMap.width - canvas.width));
+    camera.y = Math.max(0, Math.min(camera.y, gameMap.height - canvas.height));
+
+    let shakeX = (Math.random() - 0.5) * VFX.shake;
+    let shakeY = (Math.random() - 0.5) * VFX.shake;
+
+    // --- DRAW FRAME ---
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    
+    // CHROMATIC ABERRATION / GLITCH EFFECT
+    if (VFX.glitch > 1) {
+        ctx.translate(shakeX + Math.random()*VFX.glitch - VFX.glitch/2, shakeY);
+    } else {
+        ctx.translate(shakeX, shakeY);
+    }
+
+    // Grid Background with Parallax
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+    let gridOffX = -(camera.x * 0.2) % 40; let gridOffY = -(camera.y * 0.2) % 40;
+    ctx.beginPath();
+    for(let x=gridOffX; x<canvas.width; x+=40) { ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); }
+    for(let y=gridOffY; y<canvas.height; y+=40) { ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); }
+    ctx.stroke();
+
+    if(gameMap) gameMap.draw(ctx, camera.x, camera.y, canvas.width, canvas.height);
+    
+    if(isOnline) {
+        for(let id in otherPlayers) {
+            let p = otherPlayers[id];
+            
+            let baseColor = (id === currentTaggerId) ? '#ff0000' : (p.color || '#fff');
+            let color = p.isDashing ? '#fff' : baseColor;
+            
+            ctx.shadowColor = (id === currentTaggerId) ? '#ff0000' : color;
+            ctx.shadowBlur = (id === currentTaggerId) ? 25 : 10;
+            ctx.fillStyle = color;
+            
+            ctx.fillRect(p.x - camera.x, p.y - camera.y, player.w, player.h);
+            ctx.shadowBlur = 0;
+            
+            // Name
+            ctx.textAlign = "center";
+            ctx.fillStyle = "white";
+            ctx.font = "bold 10px monospace";
+            ctx.fillText(p.username || "GUEST", p.x - camera.x + 15, p.y - camera.y - 5);
+
+            // Tag Icon
+            if (id === currentTaggerId) {
+                ctx.fillStyle = "#ff0000";
+                ctx.font = "bold 14px monospace";
+                ctx.fillText("▼", p.x - camera.x + 15, p.y - camera.y - 15);
+            }
+        }
+    }
+
+    VFX.draw(ctx, camera.x, camera.y);
+    if(player) player.draw(ctx, camera.x, camera.y);
+
+    ctx.restore();
+
+    requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
