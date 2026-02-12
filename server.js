@@ -1,156 +1,172 @@
-const express = require('express');
-const http = require('http');
+const express = require("express");
+const http = require("http");
 const { Server } = require("socket.io");
-const path = require('path');
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*" },
-    pingInterval: 2000,
-    pingTimeout: 5000
+  cors: { origin: "*" },
+  pingInterval: 2000,
+  pingTimeout: 5000,
 });
 
-// 1. Serve all static files in the current directory
-app.use(express.static(__dirname));
+// Serve static files from 'public' folder
+app.use(express.static(path.join(__dirname, "public")));
 
-// 2. Explicitly serve index.html at the root URL ('/')
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// 3. Serve builder.html at a clean URL ('/builder')
-app.get('/builder', (req, res) => {
-    res.sendFile(path.join(__dirname, 'builder.html'));
-});
-
-app.get('/health', (req, res) => {
-    res.status(200).send('OK');
-});
 // --- GAME STATE ---
 let players = {};
 let currentTaggerId = null;
-const ADMIN_PASSWORD = "admin"; // Change this for security!
+const ADMIN_PASSWORD = "neon_secret_pass"; // Change this for security!
 
 // Default Map (This is sent to players when they join)
 let currentMapLayout = [
-    "1111111111111111111111111111111111111111",
-    "1......................................1",
-    "1......................................1",
-    "1..P...................................1",
-    "111111....11111..................11111.1",
-    "1................................1...1.1",
-    "1...................1111.........1...1.1",
-    "1...................1..1.........1...1.1",
-    "1.........1111......1..1.........1...1.1",
-    "1.........1.........1..1.........1...1.1",
-    "1.........1.........1..1.........1...1.1",
-    "1....2222.1.........1..1.........1...1.1",
-    "1111111111111111111111111111111111111111",
-    "1......................................1",
-    "1......................................1",
-    "1......................................1",
-    "1......................................1",
-    "1......................................1",
-    "1......................................1",
-    "1111111111111111111111111111111111111111"
+  "1111111111111111111111111111111111111111",
+  "1......................................1",
+  "1......................................1",
+  "1..P...................................1",
+  "111111....11111..................11111.1",
+  "1................................1...1.1",
+  "1...................1111.........1...1.1",
+  "1...................1..1.........1...1.1",
+  "1.........1111......1..1.........1...1.1",
+  "1.........1.........1..1.........1...1.1",
+  "1.........1.........1..1.........1...1.1",
+  "1....2222.1.........1..1.........1...1.1",
+  "1111111111111111111111111111111111111111",
+  "1......................................1",
+  "1......................................1",
+  "1......................................1",
+  "1......................................1",
+  "1......................................1",
+  "1......................................1",
+  "1111111111111111111111111111111111111111",
 ];
 
-io.on('connection', (socket) => {
-    console.log('Player connected:', socket.id);
+io.on("connection", (socket) => {
+  console.log("Player connected:", socket.id);
 
-    // 1. Send Sync Data (Players, Map, Tagger)
-    socket.emit('currentPlayers', players);
-    socket.emit('mapUpdate', currentMapLayout); 
-    socket.emit('taggerUpdate', currentTaggerId);
+  // 1. Send Sync Data (Players, Map, Tagger)
+  socket.emit("currentPlayers", players);
+  socket.emit("mapUpdate", currentMapLayout);
+  socket.emit("taggerUpdate", currentTaggerId);
 
-    // 2. Handle Join Request
-    socket.on('requestJoin', (data, callback) => {
-        // Simple validation
-        const existingName = Object.values(players).find(p => p.username === data.username);
-        if (existingName) {
-            callback({ success: false, message: "NAME TAKEN" });
-            return;
-        }
+  // 2. Handle Join Request
+  socket.on("requestJoin", (data, callback) => {
+    // Simple validation
+    const existingName = Object.values(players).find(
+      (p) => p.username === data.username,
+    );
+    if (existingName) {
+      callback({ success: false, message: "NAME TAKEN" });
+      return;
+    }
 
-        // Initialize Player
-        players[socket.id] = {
-            x: 100, y: 100, vx: 0, vy: 0,
-            facing: 1, isDashing: false,
-            color: data.color,
-            username: data.username
-        };
+    // Initialize Player
+    players[socket.id] = {
+      x: 100,
+      y: 100,
+      vx: 0,
+      vy: 0,
+      facing: 1,
+      isDashing: false,
+      color: data.color,
+      username: data.username,
+    };
 
-        // If no tagger exists, this player becomes IT
-        if (!currentTaggerId) {
-            currentTaggerId = socket.id;
-            io.emit('taggerUpdate', currentTaggerId);
-        }
+    // If no tagger exists, this player becomes IT
+    if (!currentTaggerId) {
+      currentTaggerId = socket.id;
+      io.emit("taggerUpdate", currentTaggerId);
+    }
 
-        callback({ success: true, id: socket.id });
-        socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
+    callback({ success: true, id: socket.id });
+    socket.broadcast.emit("newPlayer", {
+      id: socket.id,
+      player: players[socket.id],
     });
+  });
 
-    // 3. Movement
-    socket.on('playerMovement', (movementData) => {
-        if (players[socket.id]) {
-            players[socket.id] = { ...players[socket.id], ...movementData };
-            // Volatile emit for movement (drops packets if laggy to prevent buildup)
-            socket.broadcast.volatile.emit('playerMoved', { id: socket.id, ...movementData });
-        }
+  // 3. Movement
+  socket.on("playerMovement", (movementData) => {
+    if (players[socket.id]) {
+      players[socket.id] = { ...players[socket.id], ...movementData };
+      // Volatile emit for movement (drops packets if laggy to prevent buildup)
+      socket.broadcast.volatile.emit("playerMoved", {
+        id: socket.id,
+        ...movementData,
+      });
+    }
+  });
+
+  socket.on("playerDash", () => {
+    socket.broadcast.emit("otherPlayerDash", socket.id);
+  });
+
+  // 4. Tagging Logic
+  socket.on("tagHit", (victimId) => {
+    // Only the current tagger can tag someone
+    if (socket.id !== currentTaggerId) return;
+
+    // Verify victim exists
+    if (players[victimId]) {
+      currentTaggerId = victimId; // Swap roles
+      io.emit("taggerUpdate", currentTaggerId); // Tell everyone
+    }
+  });
+
+  // Add this helper function at the top of your script
+  function normalizeMap(layout) {
+    return layout.map((row) => {
+      // If the row is a string (old format), convert it to an array of objects
+      if (typeof row === "string") {
+        return row.split("").map((char) => ({
+          type: char,
+          visible: true,
+          solid: char === "1",
+          short: false,
+        }));
+      }
+      // If it's already an array (new format), keep it
+      return row;
     });
+  }
 
-    socket.on('playerDash', () => {
-        socket.broadcast.emit('otherPlayerDash', socket.id);
-    });
+  // Update the admin listener to use this helper
+  socket.on("adminUpdateMap", (data, callback) => {
+    if (data.password !== ADMIN_PASSWORD) {
+      callback({ success: false, message: "INVALID PASSWORD" });
+      return;
+    }
 
-    // 4. Tagging Logic
-    socket.on('tagHit', (victimId) => {
-        // Only the current tagger can tag someone
-        if (socket.id !== currentTaggerId) return;
-        
-        // Verify victim exists
-        if (players[victimId]) {
-            currentTaggerId = victimId; // Swap roles
-            io.emit('taggerUpdate', currentTaggerId); // Tell everyone
-        }
-    });
+    // Normalize the layout before saving and broadcasting
+    currentMapLayout = normalizeMap(data.layout);
+    console.log("Map updated and normalized by Admin");
 
-    // 5. Admin Map Builder
-    socket.on('adminUpdateMap', (data, callback) => {
-        if (data.password !== ADMIN_PASSWORD) {
-            callback({ success: false, message: "INVALID PASSWORD" });
-            return;
-        }
+    io.emit("mapUpdate", currentMapLayout);
+    callback({ success: true });
+  });
 
-        currentMapLayout = data.layout;
-        console.log("Map updated by Admin");
-        
-        // Broadcast new map to all players
-        io.emit('mapUpdate', currentMapLayout);
-        
-        callback({ success: true });
-    });
+  // 6. Disconnect
+  socket.on("disconnect", () => {
+    delete players[socket.id];
+    io.emit("playerDisconnected", socket.id);
 
-    // 6. Disconnect
-    socket.on('disconnect', () => {
-        delete players[socket.id];
-        io.emit('playerDisconnected', socket.id);
-
-        // If the tagger left, pick a random new tagger
-        if (socket.id === currentTaggerId) {
-            const remainingIds = Object.keys(players);
-            if (remainingIds.length > 0) {
-                currentTaggerId = remainingIds[Math.floor(Math.random() * remainingIds.length)];
-            } else {
-                currentTaggerId = null;
-            }
-            io.emit('taggerUpdate', currentTaggerId);
-        }
-    });
+    // If the tagger left, pick a random new tagger
+    if (socket.id === currentTaggerId) {
+      const remainingIds = Object.keys(players);
+      if (remainingIds.length > 0) {
+        currentTaggerId =
+          remainingIds[Math.floor(Math.random() * remainingIds.length)];
+      } else {
+        currentTaggerId = null;
+      }
+      io.emit("taggerUpdate", currentTaggerId);
+    }
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
