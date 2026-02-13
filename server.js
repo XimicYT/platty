@@ -5,10 +5,12 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
+// Optimization: Enable compression and set transport preferences
 const io = new Server(server, {
     cors: { origin: "*" },
     pingInterval: 2000,
-    pingTimeout: 5000
+    pingTimeout: 5000,
+    transports: ['websocket', 'polling'] // Prefer websocket
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -18,10 +20,7 @@ let players = {};
 let currentTaggerId = null;
 const ADMIN_PASSWORD = "admin";
 
-// 30 FPS Server Tick Rate (Optimizes Bandwidth)
-const TICK_RATE = 30; 
-const TICK_INTERVAL = 1000 / TICK_RATE;
-
+// Default Map
 let currentMapLayout = [
     "1111111111111111111111111111111111111111",
     "1......................................1",
@@ -35,53 +34,39 @@ let currentMapLayout = [
     "1.........1.........1..1.........1...1.1",
     "1.........1.........1..1.........1...1.1",
     "1....2222.1.........1..1.........1...1.1",
+    "1111111111111111111111111111111111111111",
+    "1......................................1",
+    "1......................................1",
+    "1......................................1",
+    "1......................................1",
+    "1......................................1",
+    "1......................................1",
     "1111111111111111111111111111111111111111"
 ];
 
-// --- SERVER LOOP (Heartbeat) ---
-// Instead of sending data immediately, we bundle it.
-setInterval(() => {
-    // specific formatting to reduce JSON size
-    const packet = {}; 
-    for (let id in players) {
-        let p = players[id];
-        packet[id] = {
-            x: Math.round(p.x * 100) / 100, // Round to 2 decimals
-            y: Math.round(p.y * 100) / 100,
-            f: p.facing, // 'f' is shorter than 'facing'
-            d: p.isDashing ? 1 : 0,
-            c: p.color,
-            u: p.username
-        };
-    }
-    
-    // Volatile emit: If client is laggy, they drop old packets and jump to new ones
-    io.volatile.emit('worldState', packet);
-    
-    // Send player count for menu users
-    io.emit('serverStats', { count: Object.keys(players).length });
-
-}, TICK_INTERVAL);
+// Helper to send count
+const broadcastCount = () => {
+    io.emit('playerCount', Object.keys(players).length);
+};
 
 io.on('connection', (socket) => {
-    console.log('Connected:', socket.id);
+    console.log('Player connected:', socket.id);
 
-    // Send initial map and tagger
+    // Send initial data
+    socket.emit('currentPlayers', players);
     socket.emit('mapUpdate', currentMapLayout); 
     socket.emit('taggerUpdate', currentTaggerId);
-    socket.emit('serverStats', { count: Object.keys(players).length });
+    socket.emit('playerCount', Object.keys(players).length); // Send count immediately
 
-    // Handle Join
     socket.on('requestJoin', (data, callback) => {
-        // Anti-Duplicate Name Check
-        const existing = Object.values(players).find(p => p.username === data.username && p.id !== socket.id);
-        if (existing) {
+        // Validation
+        const existingName = Object.values(players).find(p => p.username === data.username);
+        if (existingName) {
             callback({ success: false, message: "NAME TAKEN" });
             return;
         }
 
         players[socket.id] = {
-            id: socket.id,
             x: 100, y: 100, vx: 0, vy: 0,
             facing: 1, isDashing: false,
             color: data.color,
@@ -94,15 +79,15 @@ io.on('connection', (socket) => {
         }
 
         callback({ success: true, id: socket.id });
+        socket.broadcast.emit('newPlayer', { id: socket.id, player: players[socket.id] });
+        broadcastCount(); // Update count for everyone
     });
 
-    // Receive Movement (Client Authority for responsiveness, validated by server implicitly)
-    socket.on('playerMovement', (data) => {
+    socket.on('playerMovement', (movementData) => {
         if (players[socket.id]) {
-            players[socket.id].x = data.x;
-            players[socket.id].y = data.y;
-            players[socket.id].facing = data.facing;
-            players[socket.id].isDashing = data.isDashing;
+            players[socket.id] = { ...players[socket.id], ...movementData };
+            // Volatile for performance (drops packets if laggy)
+            socket.broadcast.volatile.emit('playerMoved', { id: socket.id, ...movementData });
         }
     });
 
@@ -112,25 +97,39 @@ io.on('connection', (socket) => {
 
     socket.on('tagHit', (victimId) => {
         if (socket.id !== currentTaggerId) return;
+        
         if (players[victimId]) {
             currentTaggerId = victimId; 
             io.emit('taggerUpdate', currentTaggerId); 
         }
     });
 
+    socket.on('adminUpdateMap', (data, callback) => {
+        if (data.password !== ADMIN_PASSWORD) {
+            callback({ success: false, message: "INVALID PASSWORD" });
+            return;
+        }
+        currentMapLayout = data.layout;
+        io.emit('mapUpdate', currentMapLayout);
+        callback({ success: true });
+    });
+
     socket.on('disconnect', () => {
-        delete players[socket.id];
-        io.emit('playerDisconnected', socket.id); // For cleanup
-        
-        if (socket.id === currentTaggerId) {
-            const ids = Object.keys(players);
-            currentTaggerId = ids.length > 0 ? ids[Math.floor(Math.random() * ids.length)] : null;
-            io.emit('taggerUpdate', currentTaggerId);
+        if (players[socket.id]) {
+            delete players[socket.id];
+            io.emit('playerDisconnected', socket.id);
+            
+            if (socket.id === currentTaggerId) {
+                const remainingIds = Object.keys(players);
+                currentTaggerId = remainingIds.length > 0 ? remainingIds[Math.floor(Math.random() * remainingIds.length)] : null;
+                io.emit('taggerUpdate', currentTaggerId);
+            }
+            broadcastCount(); // Update count
         }
     });
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server optimized on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
