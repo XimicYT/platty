@@ -146,6 +146,14 @@ io.on("connection", (socket) => {
     // Broadcast to EVERYONE (including the sender)
     io.emit("newChatMessage", messageData);
   });
+  // --- CHAT TYPING STATE ---
+  socket.on("setTyping", (isTyping) => {
+    // Broadcast to everyone else that this specific player is typing
+    socket.broadcast.emit("playerTyping", {
+      id: socket.id,
+      isTyping: isTyping,
+    });
+  });
   socket.on("adminUpdateMap", (data, callback) => {
     if (data.password !== ADMIN_PASSWORD) {
       callback({ success: false, message: "INVALID PASSWORD" });
