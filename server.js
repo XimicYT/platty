@@ -23,6 +23,10 @@ let players = {};
 let currentTaggerId = null;
 const ADMIN_PASSWORD = "admin";
 
+// --- NEW: CHAT STATE ---
+const MAX_CHAT_HISTORY = 50;
+let chatHistory = [];
+
 // Default Map
 let currentMapLayout = [
   "1111111111111111111111111111111111111111",
@@ -60,7 +64,7 @@ io.on("connection", (socket) => {
   socket.emit("mapUpdate", currentMapLayout);
   socket.emit("taggerUpdate", currentTaggerId);
   socket.emit("playerCount", Object.keys(players).length); // Send count immediately
-
+  socket.emit("chatHistory", chatHistory);
   socket.on("requestJoin", (data, callback) => {
     // Validation
     const existingName = Object.values(players).find(
@@ -118,7 +122,30 @@ io.on("connection", (socket) => {
       io.emit("taggerUpdate", currentTaggerId);
     }
   });
+  // --- NEW: Handle incoming chat messages ---
+  socket.on("sendChatMessage", (text) => {
+    const player = players[socket.id];
+    // Security/Sanity checks: Ensure player exists and text isn't empty/massive
+    if (!player || !text || text.trim() === "") return;
 
+    const cleanText = text.trim().substring(0, 100); // Max 100 characters
+
+    const messageData = {
+      username: player.username,
+      color: player.color,
+      text: cleanText,
+      timestamp: Date.now(),
+    };
+
+    // Add to RAM history
+    chatHistory.push(messageData);
+    if (chatHistory.length > MAX_CHAT_HISTORY) {
+      chatHistory.shift(); // Remove the oldest message
+    }
+
+    // Broadcast to EVERYONE (including the sender)
+    io.emit("newChatMessage", messageData);
+  });
   socket.on("adminUpdateMap", (data, callback) => {
     if (data.password !== ADMIN_PASSWORD) {
       callback({ success: false, message: "INVALID PASSWORD" });
