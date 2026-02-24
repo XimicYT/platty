@@ -151,8 +151,13 @@ io.on("connection", (socket) => {
       callback({ success: false, message: "INVALID PASSWORD" });
       return;
     }
-    currentMapLayout = data.layout;
+
+    // --- THE FIX: Look for the new mapData object first ---
+    currentMapLayout = data.mapData || data.layout;
+
+    // Broadcast the new tiny payload to all clients
     io.emit("mapUpdate", currentMapLayout);
+
     callback({ success: true });
   });
 
